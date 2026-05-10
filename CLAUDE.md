@@ -4,7 +4,7 @@
 
 A standalone macOS app (Tauri 2.0 + React/TypeScript) that lets IT admins manage Iru ADE (Automated Device Enrollment) tokens without needing any developer tooling. Drag `.app` to Applications and go.
 
-**Source of original API knowledge:** `/Users/andyrana/GitHub/Iru-ADE-standalone/` (reference files only — not the app)
+**Source of original API knowledge:** a private reference repo (not committed here) containing:
 - `ADE-API-QUIRKS.md` — 8 critical API quirks encoded in Rust
 - `ADE-MANAGER-PRD.md` — product requirements
 - `kandji.ts`, `page.tsx`, `AdeTokenUploadDialog.tsx` — original Next.js components this was adapted from
@@ -122,7 +122,7 @@ All commands registered in `src-tauri/src/lib.rs` and called from `src/api/kandj
 
 ## API Quirks Encoded in Rust (DO NOT REGRESS)
 
-All 8 quirks from `/Users/andyrana/GitHub/Iru-ADE-standalone/ADE-API-QUIRKS.md` are in `src-tauri/src/commands/ade.rs`:
+All 8 quirks from the original `ADE-API-QUIRKS.md` reference doc are encoded in `src-tauri/src/commands/ade.rs`:
 
 1. **Trailing slashes required** on all ADE endpoints (`/ade/`, `/ade/{id}/`)
 2. **Public key path**: `/public_key/` — underscore, not hyphen
@@ -172,15 +172,17 @@ stapler validate "src-tauri/target/release/bundle/macos/Iru ADE Manager.app"
 
 ## Signing & Notarization
 
-Configured for the `dhaataa limited` (team `443N4ZB69X`) Developer ID. Signing identity is wired into `src-tauri/tauri.conf.json` (`bundle.macOS.signingIdentity` + `providerShortName`); notarization secrets live in `.env` (gitignored):
+Signing identity is wired into `src-tauri/tauri.conf.json` (`bundle.macOS.signingIdentity` + `providerShortName`). Notarization secrets live in `.env` (gitignored):
 
 ```bash
 APPLE_ID="<your-apple-id@example.com>"
-APPLE_TEAM_ID="443N4ZB69X"
-APPLE_SIGNING_IDENTITY="Developer ID Application: dhaataa limited (443N4ZB69X)"
+APPLE_TEAM_ID="<your-10-char-team-id>"
+APPLE_SIGNING_IDENTITY="Developer ID Application: <Your Name> (<TEAMID>)"
 APPLE_PASSWORD="xxxx-xxxx-xxxx-xxxx"      # app-specific password from appleid.apple.com — 4 groups
 APPLE_ID_PASSWORD="xxxx-xxxx-xxxx-xxxx"   # same value; some tooling reads this name
 ```
+
+The actual signing identity values used for the published v0.1.0 release are stored in `tauri.conf.json` (visible in the repo) and `.env` (local only). Forks should replace both with their own Developer ID.
 
 **IMPORTANT — env var name:** Tauri's bundler reads `APPLE_PASSWORD`, NOT `APPLE_ID_PASSWORD`. Earlier docs in this file had the wrong name; using only `APPLE_ID_PASSWORD` causes Tauri to skip notarization with "no APPLE_ID & APPLE_PASSWORD & APPLE_TEAM_ID … environment variables found".
 
