@@ -10,12 +10,12 @@ A standalone macOS app for IT admins to manage Apple **Automated Device Enrollme
 
 ## Why this exists
 
-ADE tokens are how MDM platforms (Iru, Jamf, Kandji, Mosyle, Intune…) get authorised by Apple Business Manager to auto-enrol Mac, iPhone and iPad devices the moment they're unboxed. Each token is:
+ADE tokens are how MDM platforms get authorised by Apple Business Manager to auto-enrol Mac, iPhone and iPad devices the moment they're unboxed. Each token is:
 
 - **Tied to one MDM server in ABM** — one Iru tenant typically uses several.
 - **Annual** — every token expires 365 days after upload and must be renewed before then, or new devices stop enrolling.
 - **Single-use** — the `.p7m` token Apple gives you can be uploaded **once**. If a renewal fails partway through, you have to go back to ABM and download a fresh one.
-- **Fiddly to manage in-product** — Iru's web UI works, but for admins running a fleet across multiple tenants/regions or rotating tokens at scale, it's slow and the API has half a dozen undocumented quirks.
+- **Fiddly to manage in-product** — Iru's web UI works, but for additional tokens, API management is the only route. 
 
 This app collapses the whole workflow — *add token, renew token, see what's expiring, see which devices each token owns, fix a wrong blueprint/user* — into a single signed `.app` you drop into `/Applications`.
 
