@@ -54,7 +54,7 @@ A standalone macOS app (Tauri 2.0 + React/TypeScript) that lets IT admins manage
 ## Project Structure
 
 ```
-kandji-ade-manager/
+iru-ade-manager/
 ├── CLAUDE.md                         ← you are here
 ├── package.json                      (pnpm, Node 20+)
 ├── vite.config.ts                    (Tailwind v4 via @tailwindcss/vite)

@@ -4,6 +4,8 @@ A standalone macOS app for IT admins to manage Apple **Automated Device Enrollme
 
 ![Add New ADE Token wizard](docs/screenshots/add-ade-token.png)
 
+> **A note on naming.** Kandji recently rebranded to **Iru**. This app is named for the new brand, but many URLs, API hostnames, internal identifiers and reference docs still say **`kandji`** — including the API hostname (`kandji.io`) you'll see on the credential screen. That's expected and will stay that way until the platform's rename rolls fully through. Read "Kandji" and "Iru" as the same product.
+
 ---
 
 ## Why this exists
@@ -26,7 +28,7 @@ This app collapses the whole workflow — *add token, renew token, see what's ex
 - **Edit a device** — change blueprint, asset tag or assigned user without leaving the app.
 - **Delete a token** when an MDM server is decommissioned in ABM.
 - **Multi-tenant ready** — switch credentials at any time via Settings → Change Credentials.
-- **Region-aware** — supports both US (`api.iru.io`) and EU (`api.eu.iru.io`) tenants.
+- **Region-aware** — supports both US (`<subdomain>.api.kandji.io`) and EU (`<subdomain>.api.eu.kandji.io`) tenants.
 
 ## Security
 
@@ -36,7 +38,7 @@ This app collapses the whole workflow — *add token, renew token, see what's ex
 
 ## Install
 
-1. Download the latest DMG from [Releases](https://github.com/dhaataalimited-hub/kandji-ade-manager/releases/latest).
+1. Download the latest DMG from [Releases](https://github.com/dhaataalimited-hub/iru-ade-manager/releases/latest).
 2. Open the DMG and drag **Iru ADE Manager** to `/Applications`.
 3. Launch it. macOS will not show a Gatekeeper warning — the app is fully notarised.
 
@@ -48,9 +50,11 @@ On first launch you'll be asked for three things:
 
 | Field | Where to find it |
 |---|---|
-| **Subdomain** | The first part of your Iru URL — `https://`***`yourtenant`***`.iru.io` |
-| **API Bearer token** | Iru → Settings → Access → API Token (needs read+write scope on devices and integrations) |
-| **Region** | US (`api.iru.io`) or EU (`api.eu.iru.io`) |
+| **Subdomain** | The first part of your Iru API URL — for example, in `https://`***`yourtenant`***`.api.kandji.io` the subdomain is **`yourtenant`** |
+| **API Bearer token** | Iru → **Settings → Access** → API Token (needs read+write scope on devices and integrations) |
+| **Region** | **US** → `https://<subdomain>.api.kandji.io`<br>**EU** → `https://<subdomain>.api.eu.kandji.io` |
+
+You'll find the API URL in your Iru tenant under **Settings → Access**. The hostname still uses `kandji.io` (see the naming note at the top).
 
 Click **Test & Save** — the app makes a single `GET /devices?limit=1` round-trip to verify the credentials before storing them in Keychain.
 
