@@ -1,0 +1,481 @@
+use crate::commands::credentials::{get_stored_creds, get_stored_token};
+use crate::http_client::{build_client, get_base_url};
+use reqwest::multipart;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+// ─── Data types (mirror the TypeScript interfaces) ───────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AdeToken {
+    pub id: String,
+    pub server_name: Option<String>,
+    pub mdm_server_name: Option<String>,
+    pub access_token_expiry: Option<String>,
+    pub days_left: Option<i64>,
+    pub device_count: Option<i64>,
+    pub blueprint_id: Option<String>,
+    pub blueprint_name: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub last_modified: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AdeDevice {
+    pub device_id: String,
+    pub serial_number: Option<String>,
+    pub model: Option<String>,
+    pub asset_tag: Option<String>,
+    pub description: Option<String>,
+    pub blueprint_id: Option<String>,
+    pub user: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Blueprint {
+    pub id: String,
+    pub name: String,
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Normalize all 4 Kandji response shapes into a Vec<Value>.
+/// Quirk 5: plain array | { results: [] } | { data: [] } | single object
+fn normalize_list(val: Value) -> Vec<Value> {
+    if val.is_array() {
+        val.as_array().cloned().unwrap_or_default()
+    } else if let Some(arr) = val.get("results").and_then(|v| v.as_array()) {
+        arr.clone()
+    } else if let Some(arr) = val.get("data").and_then(|v| v.as_array()) {
+        arr.clone()
+    } else if val.is_object() {
+        vec![val]
+    } else {
+        vec![]
+    }
+}
+
+/// Compute days_left from access_token_expiry ISO string.
+/// Quirk 6: field may be absent.
+fn compute_days_left(expiry: Option<&str>) -> Option<i64> {
+    let expiry = expiry?;
+    let expiry_ts = chrono::DateTime::parse_from_rfc3339(expiry)
+        .or_else(|_| {
+            // Try parsing without timezone suffix
+            chrono::NaiveDateTime::parse_from_str(expiry, "%Y-%m-%dT%H:%M:%SZ")
+                .map(|dt| dt.and_utc().fixed_offset())
+        })
+        .ok()?;
+    let now = chrono::Utc::now();
+    let diff = expiry_ts.signed_duration_since(now);
+    Some(diff.num_days())
+}
+
+fn parse_ade_token(v: &Value) -> AdeToken {
+    let expiry = v
+        .get("access_token_expiry")
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string());
+    let days_left = v
+        .get("days_left")
+        .and_then(|x| x.as_i64())
+        .or_else(|| compute_days_left(expiry.as_deref()));
+
+    AdeToken {
+        id: v
+            .get("id")
+            .and_then(|x| x.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        server_name: v
+            .get("server_name")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        mdm_server_name: v
+            .get("mdm_server_name")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        access_token_expiry: expiry,
+        days_left,
+        device_count: v.get("device_count").and_then(|x| x.as_i64()),
+        blueprint_id: v
+            .get("blueprint_id")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        blueprint_name: v
+            .get("blueprint_name")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        email: v
+            .get("email")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        phone: v
+            .get("phone")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        last_modified: v
+            .get("last_modified")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+    }
+}
+
+fn parse_ade_device(v: &Value) -> AdeDevice {
+    AdeDevice {
+        device_id: v
+            .get("device_id")
+            .and_then(|x| x.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        serial_number: v
+            .get("serial_number")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        model: v
+            .get("model")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        asset_tag: v
+            .get("asset_tag")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        description: v
+            .get("description")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        blueprint_id: v
+            .get("blueprint_id")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        user: v
+            .get("user")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        color: v
+            .get("color")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+    }
+}
+
+// ─── Tauri commands ──────────────────────────────────────────────────────────
+
+/// List all ADE tokens.
+/// Quirk 1: trailing slash required.
+/// Quirk 5: normalize response shape.
+/// Quirk 6: compute days_left if absent.
+#[tauri::command]
+pub async fn list_ade_tokens() -> Result<Vec<AdeToken>, String> {
+    let creds = get_stored_creds()?;
+    let token = get_stored_token()?;
+    let client = build_client(&token).map_err(|e| e.to_string())?;
+    let base = get_base_url(&creds.subdomain, &creds.region);
+
+    let res = client
+        .get(format!("{}/integrations/apple/ade/", base)) // Quirk 1
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("HTTP {}: {}", status, body));
+    }
+
+    let body: Value = res.json().await.map_err(|e| e.to_string())?;
+    let items = normalize_list(body);
+    Ok(items.iter().map(parse_ade_token).collect())
+}
+
+/// Download the Kandji public key as a PEM string.
+/// Quirk 2: endpoint uses public_key (underscore), trailing slash required.
+#[tauri::command]
+pub async fn download_ade_public_key() -> Result<String, String> {
+    let creds = get_stored_creds()?;
+    let token = get_stored_token()?;
+    let client = build_client(&token).map_err(|e| e.to_string())?;
+    let base = get_base_url(&creds.subdomain, &creds.region);
+
+    let res = client
+        .get(format!("{}/integrations/apple/ade/public_key/", base)) // Quirk 2
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("HTTP {}: {}", status, body));
+    }
+
+    res.text().await.map_err(|e| e.to_string())
+}
+
+/// Upload a new ADE token (.p7m bytes).
+/// Quirk 1: trailing slash on POST.
+/// Quirk 3: file field must be named "file".
+/// Quirk 4: blueprint_id must be UUID string.
+#[tauri::command]
+pub async fn upload_ade_token(
+    file_bytes: Vec<u8>,
+    filename: String,
+    blueprint_id: Option<String>,
+    phone: Option<String>,
+    email: Option<String>,
+) -> Result<AdeToken, String> {
+    let creds = get_stored_creds()?;
+    let token = get_stored_token()?;
+    let client = build_client(&token).map_err(|e| e.to_string())?;
+    let base = get_base_url(&creds.subdomain, &creds.region);
+
+    let file_part = multipart::Part::bytes(file_bytes)
+        .file_name(filename)
+        .mime_str("application/pkcs7-mime")
+        .map_err(|e| e.to_string())?;
+
+    let mut form = multipart::Form::new().part("file", file_part); // Quirk 3
+
+    if let Some(bp) = blueprint_id {
+        if !bp.is_empty() {
+            form = form.text("blueprint_id", bp); // Quirk 4: must be UUID
+        }
+    }
+    if let Some(p) = phone {
+        if !p.is_empty() {
+            form = form.text("phone", p);
+        }
+    }
+    if let Some(e) = email {
+        if !e.is_empty() {
+            form = form.text("email", e);
+        }
+    }
+
+    let res = client
+        .post(format!("{}/integrations/apple/ade/", base)) // Quirk 1
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        // Quirk 7: code 2002 is a catch-all — surface the raw body
+        return Err(format!("HTTP {}: {}", status, body));
+    }
+
+    let body: Value = res.json().await.map_err(|e| e.to_string())?;
+    Ok(parse_ade_token(&body))
+}
+
+/// Renew an existing ADE token.
+/// Quirk 8: .p7m tokens are single-use — surface errors clearly.
+#[tauri::command]
+pub async fn renew_ade_token(
+    ade_id: String,
+    file_bytes: Vec<u8>,
+    filename: String,
+    blueprint_id: Option<String>,
+    phone: Option<String>,
+    email: Option<String>,
+) -> Result<AdeToken, String> {
+    let creds = get_stored_creds()?;
+    let token = get_stored_token()?;
+    let client = build_client(&token).map_err(|e| e.to_string())?;
+    let base = get_base_url(&creds.subdomain, &creds.region);
+
+    let file_part = multipart::Part::bytes(file_bytes)
+        .file_name(filename)
+        .mime_str("application/pkcs7-mime")
+        .map_err(|e| e.to_string())?;
+
+    let mut form = multipart::Form::new().part("file", file_part); // Quirk 3
+
+    if let Some(bp) = blueprint_id {
+        if !bp.is_empty() {
+            form = form.text("blueprint_id", bp);
+        }
+    }
+    if let Some(p) = phone {
+        if !p.is_empty() {
+            form = form.text("phone", p);
+        }
+    }
+    if let Some(e) = email {
+        if !e.is_empty() {
+            form = form.text("email", e);
+        }
+    }
+
+    let res = client
+        .post(format!("{}/integrations/apple/ade/{}/renew", base, ade_id))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        // Quirk 8: if code 2002 appears, likely single-use token was reused
+        if body.contains("2002") {
+            return Err(format!(
+                "HTTP {}: Token upload failed — this .p7m file may have already been used. \
+                 Go back to Apple Business Manager and download a fresh token before retrying. \
+                 Raw response: {}",
+                status, body
+            ));
+        }
+        return Err(format!("HTTP {}: {}", status, body));
+    }
+
+    let body: Value = res.json().await.map_err(|e| e.to_string())?;
+    Ok(parse_ade_token(&body))
+}
+
+/// List devices for a given ADE token with page-based pagination.
+#[tauri::command]
+pub async fn list_ade_token_devices(ade_id: String) -> Result<Vec<AdeDevice>, String> {
+    let creds = get_stored_creds()?;
+    let token = get_stored_token()?;
+    let client = build_client(&token).map_err(|e| e.to_string())?;
+    let base = get_base_url(&creds.subdomain, &creds.region);
+
+    let mut all_devices: Vec<AdeDevice> = vec![];
+    let mut page = 1u32;
+
+    loop {
+        let res = client
+            .get(format!(
+                "{}/integrations/apple/ade/{}/devices?page={}",
+                base, ade_id, page
+            ))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !res.status().is_success() {
+            let status = res.status().as_u16();
+            let body = res.text().await.unwrap_or_default();
+            return Err(format!("HTTP {}: {}", status, body));
+        }
+
+        let body: Value = res.json().await.map_err(|e| e.to_string())?;
+        let items = normalize_list(body);
+
+        if items.is_empty() {
+            break;
+        }
+
+        all_devices.extend(items.iter().map(parse_ade_device));
+        page += 1;
+    }
+
+    Ok(all_devices)
+}
+
+/// Get all blueprints for UUID → name resolution.
+#[tauri::command]
+pub async fn get_blueprints() -> Result<Vec<Blueprint>, String> {
+    let creds = get_stored_creds()?;
+    let token = get_stored_token()?;
+    let client = build_client(&token).map_err(|e| e.to_string())?;
+    let base = get_base_url(&creds.subdomain, &creds.region);
+
+    let res = client
+        .get(format!("{}/blueprints?limit=300", base))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("HTTP {}: {}", status, body));
+    }
+
+    let body: Value = res.json().await.map_err(|e| e.to_string())?;
+    let items = normalize_list(body);
+
+    Ok(items
+        .iter()
+        .filter_map(|v| {
+            let id = v.get("id")?.as_str()?.to_string();
+            let name = v.get("name")?.as_str()?.to_string();
+            Some(Blueprint { id, name })
+        })
+        .collect())
+}
+
+/// Update an ADE device's blueprint, asset_tag, or user.
+#[tauri::command]
+pub async fn update_ade_device(
+    device_id: String,
+    blueprint_id: Option<String>,
+    asset_tag: Option<String>,
+    user: Option<String>,
+) -> Result<AdeDevice, String> {
+    let creds = get_stored_creds()?;
+    let token = get_stored_token()?;
+    let client = build_client(&token).map_err(|e| e.to_string())?;
+    let base = get_base_url(&creds.subdomain, &creds.region);
+
+    let mut payload = serde_json::Map::new();
+    if let Some(bp) = blueprint_id {
+        payload.insert("blueprint_id".to_string(), Value::String(bp));
+    }
+    if let Some(at) = asset_tag {
+        payload.insert("asset_tag".to_string(), Value::String(at));
+    }
+    if let Some(u) = user {
+        payload.insert("user".to_string(), Value::String(u));
+    }
+
+    let res = client
+        .patch(format!(
+            "{}/integrations/apple/ade/devices/{}", // Quirk 1: no trailing slash on PATCH
+            base, device_id
+        ))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("HTTP {}: {}", status, body));
+    }
+
+    let body: Value = res.json().await.map_err(|e| e.to_string())?;
+    Ok(parse_ade_device(&body))
+}
+
+/// Delete an ADE integration.
+/// Quirk 1: trailing slash required.
+#[tauri::command]
+pub async fn delete_ade_token(ade_id: String) -> Result<(), String> {
+    let creds = get_stored_creds()?;
+    let token = get_stored_token()?;
+    let client = build_client(&token).map_err(|e| e.to_string())?;
+    let base = get_base_url(&creds.subdomain, &creds.region);
+
+    let res = client
+        .delete(format!("{}/integrations/apple/ade/{}/", base, ade_id)) // Quirk 1
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() && res.status().as_u16() != 204 {
+        let status = res.status().as_u16();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("HTTP {}: {}", status, body));
+    }
+
+    Ok(())
+}
