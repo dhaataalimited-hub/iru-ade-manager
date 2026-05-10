@@ -27,7 +27,7 @@ A standalone macOS app (Tauri 2.0 + React/TypeScript) that lets IT admins manage
 - ✅ All 8 API quirks from `ADE-API-QUIRKS.md` encoded in Rust (`src-tauri/src/commands/ade.rs`)
 
 ### What's pending
-- ⏳ Real-device end-to-end testing against a live Kandji tenant
+- ✅ Tested, on live Iru — end to end. May 2026.
 
 ### Known issues / gotchas
 1. **Node ≥ 20 required** — Vite 7 needs Node ≥ 20. Default `nvm` Node on this machine is v24.15.0, which works. (Earlier notes said "Node 22 required" — Node 22 is not installed; use the default `nvm use default`.)
