@@ -142,8 +142,6 @@ All 8 quirks from `/Users/andyrana/GitHub/Iru-ADE-standalone/ADE-API-QUIRKS.md` 
 source ~/.nvm/nvm.sh && nvm use default
 . "$HOME/.cargo/env"
 
-cd /Users/andyrana/Documents/GitHub/kandji-ade-manager
-
 # Load signing/notarization secrets (see Signing section)
 set -a && source .env && set +a
 
