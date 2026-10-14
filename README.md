@@ -24,7 +24,7 @@ This app collapses the whole workflow — *add token, renew token, see what's ex
 - **List every ADE token** in your Iru tenant with colour-coded expiry badges (red ≤ 30 days, amber ≤ 90 days, green > 90 days).
 - **Add a new ADE token** via a guided 2-step wizard: download Iru's public key, paste it into ABM, upload the resulting `.p7m`.
 - **Renew an expiring token** with a single dialog — same wizard, ABM-first instructions baked in.
-- **Drill into a token** to see all devices currently enrolled through it, with blueprint UUIDs resolved to human-readable names.
+- **Drill into a token** to see all devices currently enrolled through it, paginated and searchable by serial number, with blueprint UUIDs resolved to human-readable names.
 - **Edit a device** — change blueprint, asset tag or assigned user without leaving the app.
 - **Delete a token** when an MDM server is decommissioned in ABM.
 - **Multi-tenant ready** — switch credentials at any time via Settings → Change Credentials.
@@ -42,7 +42,7 @@ This app collapses the whole workflow — *add token, renew token, see what's ex
 2. Open the DMG and drag **Iru ADE Manager** to `/Applications`.
 3. Launch it. macOS will not show a Gatekeeper warning — the app is fully notarised.
 
-> **Note:** the v0.1.0 build is **Apple Silicon (aarch64) only**. An Intel/universal build is on the backlog.
+> **Note:** release builds are **Apple Silicon (aarch64) only**. An Intel/universal build is on the backlog.
 
 ## First-run setup
 
@@ -67,11 +67,12 @@ Click **Test & Save** — the app makes a single `GET /devices?limit=1` round-tr
 
 ## Status
 
+- **v0.2.0** — released October 2026. Device list fixed against the live API, lazy pagination, serial number search, renew wizard pre-fills existing token settings.
 - **v0.1.0** — released May 2026.
 - Tested end-to-end against a live Iru tenant.
 - Apple Silicon only; Intel/universal binary planned.
 
-See [CLAUDE.md](./CLAUDE.md) for full project context, architecture decisions, the eight Iru API quirks the app encodes, and the build/sign/notarise workflow.
+See [CLAUDE.md](./CLAUDE.md) for full project context, architecture decisions, the ten Iru API quirks the app encodes, and the build/sign/notarise workflow.
 
 ## License
 

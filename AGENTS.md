@@ -5,13 +5,13 @@
 A standalone macOS app (Tauri 2.0 + React/TypeScript) that lets IT admins manage Iru ADE (Automated Device Enrollment) tokens without needing any developer tooling. Drag `.app` to Applications and go.
 
 **Source of original API knowledge:** a private reference repo (not committed here) containing:
-- `ADE-API-QUIRKS.md` — 8 critical API quirks encoded in Rust (a 9th was added later from live-tenant testing; see API Quirks section)
+- `ADE-API-QUIRKS.md` — 8 critical API quirks encoded in Rust (quirks 9–10 were added later from live-tenant testing; see API Quirks section)
 - `ADE-MANAGER-PRD.md` — product requirements
 - `kandji.ts`, `page.tsx`, `AdeTokenUploadDialog.tsx` — original Next.js components this was adapted from
 
 ---
 
-## Current Status: v0.1.0 — SIGNED + NOTARIZED
+## Current Status: v0.2.0 — SIGNED + NOTARIZED
 
 ### What works
 - ✅ First-run credential setup (subdomain + Bearer token + US/EU region)
@@ -19,15 +19,15 @@ A standalone macOS app (Tauri 2.0 + React/TypeScript) that lets IT admins manage
 - ✅ "Test & Save" connection check before saving
 - ✅ "Change Credentials" (Settings gear → clears Keychain, returns to setup screen)
 - ✅ List all ADE tokens with colour-coded expiry badges (red ≤30d, amber ≤90d, green >90d)
-- ✅ Expand token → paginated device table with blueprint UUIDs resolved to names
+- ✅ Expand token → lazily paginated device table (300/page, page selector) with serial number search and blueprint UUIDs resolved to names
 - ✅ Add new token — 2-step wizard: download `.pem` (native Save dialog) → upload `.p7m`
 - ✅ Renew token — 2-step wizard: ABM instructions → upload `.p7m`
 - ✅ Remove token — native confirm dialog (`ask()`) → delete integration
 - ✅ Edit ADE device — blueprint / asset tag / user via PATCH
-- ✅ All 8 API quirks from `ADE-API-QUIRKS.md` (plus a 9th, discovered live: nested fields on the list endpoint) encoded in Rust (`src-tauri/src/commands/ade.rs`)
+- ✅ All 8 API quirks from `ADE-API-QUIRKS.md` (plus quirks 9–10, discovered live: nested list-endpoint fields and device-list pagination) encoded in Rust (`src-tauri/src/commands/ade.rs`)
 
 ### What's pending
-- ✅ Tested, on live Iru — end to end. May 2026.
+- ✅ Tested, on live Iru — end to end. May 2026 (v0.1.0); v0.2.0 released October 2026.
 
 ### Known issues / gotchas
 1. **Node ≥ 20 required** — Vite 7 needs Node ≥ 20. Default `nvm` Node on this machine is v24.15.0, which works. (Earlier notes said "Node 22 required" — Node 22 is not installed; use the default `nvm use default`.)
@@ -122,7 +122,7 @@ All commands registered in `src-tauri/src/lib.rs` and called from `src/api/kandj
 
 ## API Quirks Encoded in Rust (DO NOT REGRESS)
 
-Quirks 1–8 come from the original `ADE-API-QUIRKS.md` reference doc. Quirk 9 was discovered against a live tenant in v0.1.0 and is not in that doc. All are encoded in `src-tauri/src/commands/ade.rs`:
+Quirks 1–8 come from the original `ADE-API-QUIRKS.md` reference doc. Quirks 9 and 10 were discovered against a live tenant and are not in that doc. All are encoded in `src-tauri/src/commands/ade.rs`:
 
 1. **Trailing slashes required** on all ADE endpoints (`/ade/`, `/ade/{id}/`)
 2. **Public key path**: `/public_key/` — underscore, not hyphen
@@ -191,7 +191,7 @@ APPLE_PASSWORD="xxxx-xxxx-xxxx-xxxx"      # app-specific password from appleid.a
 APPLE_ID_PASSWORD="xxxx-xxxx-xxxx-xxxx"   # same value; some tooling reads this name
 ```
 
-The actual signing identity values used for the published v0.1.0 release are stored in `tauri.conf.json` (visible in the repo) and `.env` (local only). Forks should replace both with their own Developer ID.
+The actual signing identity values used for the published releases are stored in `tauri.conf.json` (visible in the repo) and `.env` (local only). Forks should replace both with their own Developer ID.
 
 **IMPORTANT — env var name:** Tauri's bundler reads `APPLE_PASSWORD`, NOT `APPLE_ID_PASSWORD`. Earlier docs in this file had the wrong name; using only `APPLE_ID_PASSWORD` causes Tauri to skip notarization with "no APPLE_ID & APPLE_PASSWORD & APPLE_TEAM_ID … environment variables found".
 
